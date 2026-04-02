@@ -1,17 +1,24 @@
-const mongoose = require("mongoose");
 const app = require("./app");
+const connectDB = require("./utils/db");
 require("dotenv").config();
 
 const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.MONGO_URI;
 
-mongoose
-  .connect(MONGO_URI)
+/**
+ * Bootstrapping the application for local execution.
+ * The DB connection is handled by the middleware in app.js, 
+ * but we call it here to ensure the server only listens 
+ * once the initial connection is verified.
+ */
+connectDB()
   .then(() => {
-    console.log("🟢 DB Connected Successfully");
-    app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+    app.listen(PORT, () => {
+      console.info(`🚀 [SYSTEM]: Advocate Portfolio Backend Active on Port ${PORT}`);
+      console.info(`🔗 [LOCAL]: http://localhost:${PORT}`);
+    });
   })
   .catch((err) => {
-    console.error("🔴 DB Connection Error:", err);
+    console.error("🔴 [CRITICAL]: System bootstrap failed.", err.message);
     process.exit(1);
   });
+

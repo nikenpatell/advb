@@ -1,4 +1,5 @@
 const router = require("express").Router();
+const mongoose = require("mongoose");
 
 // Priority Litigation Registry
 router.use("/cases", require("./case.routes"));
@@ -12,9 +13,20 @@ router.use("/roles", require("./role.routes"));
 router.use("/tasks", require("./task.routes"));
 router.use("/calendar", require("./calendar.routes"));
 
-// Basic Health Check for industrial monitoring
-router.get("/health", (req, res) => {
-  res.status(200).json({ success: true, message: "Systems Normal. API is running smoothly." });
+// Comprehensive Health Check for industrial monitoring
+router.get("/health", async (req, res) => {
+  const dbStatus = mongoose.connection.readyState === 1 ? "Connected" : "Disconnected";
+  
+  res.status(200).json({ 
+    success: true, 
+    message: "Systems Normal. API is operational.",
+    diagnostics: {
+      database: dbStatus,
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString()
+    }
+  });
 });
 
 module.exports = router;
+
