@@ -1,6 +1,7 @@
 const authService = require("../services/auth.service");
 const asyncHandler = require("../utils/asyncHandler");
 
+
 exports.refreshToken = asyncHandler(async (req, res) => {
   const { refreshToken } = req.body;
   if (!refreshToken) throw new Error("Refresh token required");
