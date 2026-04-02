@@ -14,10 +14,13 @@ const checkPermission = (module, action) => {
       if (req.user.role === "ORG_ADMIN") return next();
 
       // 2. Resolve Workspace Identity & custom role parameters
-      const membership = await Membership.findOne({ 
-        userId: req.user.id, 
-        organizationId: req.user.orgId 
+      const membership = await Membership.findOne({
+        userId: req.user.id,
+        organizationId: req.user.orgId
       }).populate({
+
+
+
         path: 'customRoleId',
         model: 'Role'
       });
@@ -31,15 +34,15 @@ const checkPermission = (module, action) => {
 
       // 4. Custom Registry Permission validation
       if (!membership.customRoleId) {
-         // Strict security: No custom role = No granular access
-         throw new AppError("Security Block: Personnel lacks granular role assignment for this operation.", 403);
+        // Strict security: No custom role = No granular access
+        throw new AppError("Security Block: Personnel lacks granular role assignment for this operation.", 403);
       }
 
       const role = membership.customRoleId;
       const perm = role.permissions.find(p => p.module === module);
 
       if (!perm || !perm.actions.includes(action)) {
-         throw new AppError(`Registry Violation: Identity lacks '${action}' privilege for the '${module}' workstation.`, 403);
+        throw new AppError(`Registry Violation: Identity lacks '${action}' privilege for the '${module}' workstation.`, 403);
       }
 
       // 5. Authorization Synchronized

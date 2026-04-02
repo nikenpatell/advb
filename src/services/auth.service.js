@@ -65,6 +65,7 @@ exports.register = async (data) => {
     isVerified: false,
     otp,
     otpExpire: Date.now() + 10 * 60 * 1000,
+    role: "ORG_ADMIN",
   });
 
   // 2. Create foundational role identity (ORG_ADMIN) with its own password
