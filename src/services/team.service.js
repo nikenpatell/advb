@@ -8,8 +8,8 @@ exports.createMember = async (data, orgId, creatorId) => {
   const { name, email, password, contactNumber, role, customRoleId } = data;
   const targetRole = role || "TEAM_MEMBER";
 
-  // 1. Manage Global Identity
-  let user = await User.findOne({ email });
+  // 1. Manage Global Identity (Scoped by Role)
+  let user = await User.findOne({ email, role: targetRole });
   
   if (!user) {
     const hashedPassword = await bcrypt.hash(password || "Default@123", 10);
@@ -19,15 +19,16 @@ exports.createMember = async (data, orgId, creatorId) => {
       password: hashedPassword, // Legacy global fallback
       contactNumber,
       isVerified: false,
+      role: targetRole,
     });
   }
 
   // 2. Manage Role-Specific Credential (The "Different Password per Role" logic)
   const existingRoleAuth = await RoleAuth.findOne({ userId: user._id, role: targetRole });
   
+  const otp = generateOTP();
   if (!existingRoleAuth && password) {
     const roleHashedPassword = await bcrypt.hash(password, 10);
-    const otp = generateOTP();
     await RoleAuth.create({
       userId: user._id,
       role: targetRole,
@@ -37,6 +38,11 @@ exports.createMember = async (data, orgId, creatorId) => {
       otpExpire: Date.now() + 10 * 60 * 1000,
     });
   }
+
+  // Also set OTP on the User record for the auth service verifyOtp flow
+  user.otp = otp;
+  user.otpExpire = Date.now() + 10 * 60 * 1000;
+  await user.save();
 
   // 3. Map User to the specific Organization via Membership
   try {

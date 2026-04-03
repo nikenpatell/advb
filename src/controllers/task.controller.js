@@ -20,3 +20,13 @@ exports.deleteTask = asyncHandler(async (req, res) => {
   await taskService.deleteTask(req.params.id, req.user.id, req.user.orgId);
   res.json({ success: true, message: "Initiative dissolved and removed from registry." });
 });
+
+exports.addComment = asyncHandler(async (req, res) => {
+  const data = await taskService.addComment(req.params.id, req.user.id, req.user.orgId, req.body.text);
+  res.status(201).json({ success: true, message: "Comment added.", data });
+});
+
+exports.getTaskById = asyncHandler(async (req, res) => {
+  const data = await taskService.getTaskById(req.params.id, req.user.id, req.user.orgId);
+  res.json({ success: true, message: "Task details retrieved.", data });
+});

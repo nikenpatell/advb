@@ -11,7 +11,6 @@ const userSchema = new mongoose.Schema(
     email: {
       type: String,
       required: true,
-      unique: true,
       index: true,
       lowercase: true,
       trim: true,
@@ -48,6 +47,9 @@ const userSchema = new mongoose.Schema(
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
+
+// Unique user per email-role cluster
+userSchema.index({ email: 1, role: 1 }, { unique: true });
 
 // Apply lean virtuals plugin for performance boosts on .lean()
 userSchema.plugin(mongooseLeanVirtuals);

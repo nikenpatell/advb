@@ -46,6 +46,13 @@ const taskSchema = new mongoose.Schema(
         details: String,
       },
     ],
+    comments: [
+      {
+        author: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+        text: { type: String, required: true },
+        createdAt: { type: Date, default: Date.now },
+      }
+    ],
   },
   { timestamps: true }
 );
@@ -53,5 +60,6 @@ const taskSchema = new mongoose.Schema(
 // High-performance visibility indexing
 taskSchema.index({ organizationId: 1, createdBy: 1 });
 taskSchema.index({ organizationId: 1, assignedTo: 1 });
+taskSchema.index({ organizationId: 1, status: 1 });
 
 module.exports = mongoose.model("Task", taskSchema);

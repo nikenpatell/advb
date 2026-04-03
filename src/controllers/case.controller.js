@@ -30,3 +30,8 @@ exports.addHearing = asyncHandler(async (req, res) => {
   const data = await caseService.addHearing(req.params.caseId, req.user.id, req.user.orgId, req.body);
   res.status(201).json({ success: true, message: "New hearing event scheduled and logged.", data });
 });
+
+exports.addComment = asyncHandler(async (req, res) => {
+  const data = await caseService.addComment(req.params.id, req.user.id, req.user.orgId, req.body.text);
+  res.status(201).json({ success: true, message: "Comment added to registry.", data });
+});

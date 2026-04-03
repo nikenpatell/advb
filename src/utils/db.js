@@ -28,6 +28,19 @@ const connectDB = async () => {
 
     isConnected = db.connections[0].readyState;
     console.info("🟢 Database connection established successfully.");
+
+    // Cleanup: Drop legacy email unique index to facilitate multi-role identity cluster
+    try {
+      const UserCollection = mongoose.connection.collection('users');
+      const indexes = await UserCollection.getIndexes();
+      if (indexes.email_1) {
+        await UserCollection.dropIndex('email_1');
+        console.info("Identity Cluster Migration: Successfully dropped legacy unique email index.");
+      }
+    } catch (e) {
+      // Index might not exist or error during startup, we log but continue
+      console.warn("Identity Cluster Migration Warning:", e.message);
+    }
   } catch (error) {
     console.error("🔴 MongoDB Connection Error:", error.message);
     throw error;

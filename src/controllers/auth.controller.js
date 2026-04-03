@@ -38,7 +38,10 @@ exports.register = asyncHandler(async (req, res) => {
   res.status(201).json({
     success: true,
     message: data.message,
-    data: { email: data.email },
+    data: { 
+      email: data.email,
+      role: data.role
+    },
   });
 });
 

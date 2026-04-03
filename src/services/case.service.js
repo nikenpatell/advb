@@ -21,17 +21,23 @@ const getCases = async (userId, orgId) => {
   return await Case.find(query)
     .populate("clientId", "name email contactNumber")
     .populate("assignedMembers", "name email role")
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .lean();
 };
 
 const getCaseById = async (id, userId, orgId) => {
-  const membership = await Membership.findOne({ userId, organizationId: orgId });
+  const membership = await Membership.findOne({ userId, organizationId: orgId }).lean();
   if (!membership) throw new AppError("Access Denied: Organization not recognized.", 403);
 
-  const data = await Case.findOne({ _id: id, organizationId: orgId })
-    .populate("clientId", "name email contactNumber")
-    .populate("assignedMembers", "name email role")
-    .populate("history.performedBy", "name");
+  const [data, hearings] = await Promise.all([
+     Case.findOne({ _id: id, organizationId: orgId })
+      .populate("clientId", "name email contactNumber")
+      .populate("assignedMembers", "name email role")
+      .populate("history.performedBy", "name")
+      .populate("comments.author", "name email")
+      .lean(),
+     Hearing.find({ caseId: id }).populate("createdBy", "name").sort({ hearingDate: -1 }).lean()
+  ]);
 
   if (!data) throw new AppError("Case registry entry not found.", 404);
 
@@ -45,10 +51,7 @@ const getCaseById = async (id, userId, orgId) => {
     }
   }
 
-  // Get Hearings
-  const hearings = await Hearing.find({ caseId: id }).populate("createdBy", "name").sort({ hearingDate: -1 });
-
-  return { ...data.toObject(), hearings };
+  return { ...data, hearings };
 };
 
 const createCase = async (userId, orgId, data) => {
@@ -147,11 +150,24 @@ const addHearing = async (caseId, userId, orgId, data) => {
   return hearing;
 };
 
+const addComment = async (caseId, userId, orgId, text) => {
+  const caseObj = await Case.findOne({ _id: caseId, organizationId: orgId });
+  if (!caseObj) throw new AppError("Target registry entry not identified.", 404);
+
+  caseObj.comments.push({
+    author: userId,
+    text
+  });
+  
+  return await caseObj.save();
+};
+
 module.exports = {
   getCases,
   getCaseById,
   createCase,
   updateCase,
   deleteCase,
-  addHearing
+  addHearing,
+  addComment
 };

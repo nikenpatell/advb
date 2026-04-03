@@ -15,6 +15,18 @@ exports.getTasks = async (userId, orgId) => {
     .lean();
 };
 
+exports.getTaskById = async (taskId, userId, orgId) => {
+  const task = await Task.findOne({ _id: taskId, organizationId: orgId })
+    .populate("createdBy", "name email")
+    .populate("assignedTo", "name email")
+    .populate("comments.author", "name email")
+    .populate("history.performedBy", "name")
+    .lean();
+  
+  if (!task) throw new AppError("Task not found", 404);
+  return task;
+};
+
 exports.getOrgAuditTasks = async (orgId) => {
   // Visibility for Admins (if we implement a global view)
   return await Task.find({ organizationId: orgId })
@@ -62,4 +74,16 @@ exports.deleteTask = async (taskId, userId, orgId) => {
   });
   if (result.deletedCount === 0) throw new AppError("Task deletion failed: Identity context or target missing.", 404);
   return true;
+};
+
+exports.addComment = async (taskId, userId, orgId, text) => {
+  const task = await Task.findOne({ _id: taskId, organizationId: orgId });
+  if (!task) throw new AppError("Target task dissolved or inaccessible.", 404);
+
+  task.comments.push({
+    author: userId,
+    text
+  });
+  
+  return await task.save();
 };

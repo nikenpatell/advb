@@ -17,5 +17,6 @@ router.put("/:id", checkPermission("CASE", "UPDATE"), controller.updateCase);
 router.delete("/:id", checkPermission("CASE", "DELETE"), controller.deleteCase);
 
 router.post("/:caseId/hearings", checkPermission("CASE", "UPDATE"), controller.addHearing);
+router.post("/:id/comments", checkPermission("CASE", "UPDATE"), controller.addComment);
 
 module.exports = router;

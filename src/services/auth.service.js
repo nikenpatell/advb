@@ -6,51 +6,40 @@ const { generateOTP } = require("../utils/otp");
 const AppError = require("../utils/AppError");
 
 exports.getRolesByEmail = async ({ email }) => {
-  const user = await User.findOne({ email }).select("+password").lean();
-  if (!user) throw new AppError("Identity not found.", 404);
+  // 1. Get all base roles from multiple identity clusters
+  const users = await User.find({ email }).lean();
+  if (users.length === 0) throw new AppError("Identity not found.", 404);
 
+  const userIds = users.map(u => u._id);
   const RoleAuth = require("../models/RoleAuth.model");
   const Membership = require("../models/Membership.model");
   
-  // 1. Get raw roles from the credential ledger (RoleAuth)
-  const authRoles = await RoleAuth.find({ userId: user._id }).distinct("role");
+  // 2. Get roles from credential ledger for ALL identities with this email
+  const authRoles = await RoleAuth.find({ userId: { $in: userIds } }).distinct("role");
   
-  // 2. Cross-reference with actual memberships to ensure active access
-  // A role should only be available if the user has an active workstation mapping for it
-  const activeMemberships = await Membership.find({ userId: user._id }).distinct("role");
+  // 3. Get actual active memberships for these identities
+  const activeMemberships = await Membership.find({ userId: { $in: userIds } }).distinct("role");
   
-  // 3. Filter roles: Must have a RoleAuth AND a Membership (unless it's the primary account role which might be pending)
+  // 4. Global roles are those that have a credential AND a membership (or are the primary role of an identity)
   let roles = authRoles.filter(r => activeMemberships.includes(r));
 
-  // 4. Lazy Migration Fallback (Handles legacy accounts with memberships but no RoleAuth yet)
-  if (roles.length === 0 && activeMemberships.length > 0) {
-    for (const r of activeMemberships) {
-       await RoleAuth.create({
-         userId: user._id,
-         role: r,
-         password: user.password,
-         isVerified: user.isVerified
-       });
-    }
-    roles = activeMemberships;
-  }
+  // 5. Fallback: Include roles explicitly set in the User records
+  const userBaseRoles = users.map(u => u.role).filter(Boolean);
+  
+  const finalRoles = Array.from(new Set([...roles, ...userBaseRoles]));
 
-  // If still no roles found but user exists, they might be a high-level admin or a new user with base role
-  if (roles.length === 0 && user.role) {
-     roles = [user.role];
-  }
-
-  return { roles: Array.from(new Set(roles)), isVerified: user.isVerified };
+  return { roles: finalRoles, isVerified: users.some(u => u.isVerified) };
 };
 
 exports.register = async (data) => {
-  const existing = await User.findOne({ email: data.email }).lean();
+  // Check for existing identity cluster for this specific role
+  const existing = await User.findOne({ email: data.email, role: "ORG_ADMIN" }).lean();
 
   if (existing) {
     if (existing.isVerified) {
-      throw new AppError("Account collision: verified user already exists with this email.", 400);
+      throw new AppError("Account collision: verified ORG_ADMIN already exists with this email.", 400);
     } else {
-      throw new AppError("Identity pending: user exists but requires OTP verification.", 400);
+      throw new AppError("Identity pending: ORG_ADMIN exists but requires OTP verification.", 400);
     }
   }
 
@@ -79,16 +68,43 @@ exports.register = async (data) => {
   return {
     message: "Authorization token generated. Audit OTP sent for verification.",
     email: user.email,
+    role: user.role,
   };
 };
 
-exports.verifyOtp = async ({ email, otp }) => {
-  const user = await User.findOne({ email }).select("+otp +otpExpire");
-
-  if (!user) throw new AppError("Verification failed: Identity not found.", 404);
+exports.verifyOtp = async ({ email, otp, role }) => {
+  // If role is not provided, we assume ORG_ADMIN as it's the primary registration path
+  const targetRole = role || "ORG_ADMIN";
   
+  // 1. Find potential identities for the email
+  const users = await User.find({ email }).select("+otp +otpExpire");
+  if (users.length === 0) throw new AppError("Verification failed: Identity not found.", 404);
+
+  // 2. Precisely locate the identity belonging to this specific role context
+  // This is critical for multi-role accounts to avoid verifying the wrong registry entry.
+  let user = users.find(u => u.role === targetRole);
+  
+  if (!user) {
+    // If no direct role match found on User record, locate via the credential ledger (RoleAuth)
+    const userIds = users.map(u => u._id.toString());
+    const roleAuth = await RoleAuth.findOne({ userId: { $in: userIds }, role: targetRole });
+    if (roleAuth) {
+      user = users.find(u => u._id.toString() === roleAuth.userId.toString());
+    }
+  }
+
+  // 3. Last resort: If the OTP matches ANY record for this email, we associate it with the targetRole
+  if (!user) {
+    user = users.find(u => u.otp === otp);
+  }
+
+  if (!user) {
+    throw new AppError(`Verification failed: No identity found for role context: ${targetRole}.`, 404);
+  }
+  
+  // 4. Verify specific identity state
   if (user.isVerified) {
-      throw new AppError("Security state: User is already verified. Proceed to log in.", 400);
+    throw new AppError(`Security state: Your ${targetRole} identity is already verified. Proceed to log in.`, 400);
   }
 
   // Demo bypass logic
@@ -112,20 +128,34 @@ exports.verifyOtp = async ({ email, otp }) => {
 exports.login = async ({ email, password, role }) => {
   if (!role) throw new AppError("Security Protocol: Context role selection is required for this identity cluster.", 400);
 
-  const user = await User.findOne({ email });
-  if (!user) throw new AppError("Security Block: Invalid credentials detected.", 401);
+  // 1. Find all users associated with this email
+  const users = await User.find({ email });
+  if (users.length === 0) throw new AppError("Security Block: Invalid credentials detected.", 401);
 
-  // Find role-specific credential
-  const roleAuth = await RoleAuth.findOne({ userId: user._id, role }).select("+password");
+  // 2. Locate the specific credential (RoleAuth) for the chosen role
+  const userIds = users.map(u => u._id);
+  const roleAuth = await RoleAuth.findOne({ userId: { $in: userIds }, role }).select("+password");
   
-  // If no role-specific credential found, we fall back to global password ONLY if it's the base role (this helps with migration)
-  let isMatch = false;
+  let user;
+  let hashedPassword;
+
   if (roleAuth) {
-    isMatch = await bcrypt.compare(password, roleAuth.password);
+    // Case 1: Advanced Identity (RoleAuth credential found)
+    user = users.find(u => u._id.toString() === roleAuth.userId.toString());
+    hashedPassword = roleAuth.password;
   } else {
-    // Legacy fallback or error
+    // Case 2: Legacy Identity (No RoleAuth, check User.role field)
+    user = users.find(u => u.role === role);
+    hashedPassword = user ? user.password : null;
+  }
+  
+  if (!user || !hashedPassword) {
     throw new AppError(`Security Block: No credentials found for role context: ${role}`, 401);
   }
+
+  // 3. Authenticate
+  let isMatch = await bcrypt.compare(password, hashedPassword);
+  if (!isMatch) throw new AppError("Security Block: Invalid credentials detected.", 401);
 
   if (!isMatch) throw new AppError("Security Block: Invalid credentials detected.", 401);
 
@@ -184,10 +214,22 @@ exports.refreshToken = async (token) => {
 };
 
 exports.forgotPassword = async ({ email, role }) => {
-  const user = await User.findOne({ email });
-  if (!user) {
-    throw new AppError("Authorization failed: No account associated with this email identity.", 404);
+  // Search through all identities for this email to find the one with the correct RoleAuth
+  const users = await User.find({ email });
+  if (users.length === 0) throw new AppError("No account associated with this email.", 404);
+
+  const userIds = users.map(u => u._id);
+  const roleAuth = await RoleAuth.findOne({ userId: { $in: userIds }, role });
+  
+  let user;
+  if (roleAuth) {
+    user = users.find(u => u._id.toString() === roleAuth.userId.toString());
+  } else {
+    // Fallback: Check if any User record has this role as primary role
+    user = users.find(u => u.role === role);
   }
+
+  if (!user) throw new AppError(`No account found for role: ${role}`, 404);
   
   const otp = generateOTP();
   user.otp = otp;
@@ -201,8 +243,22 @@ exports.forgotPassword = async ({ email, role }) => {
 };
 
 exports.verifyResetOtp = async ({ email, otp, role }) => {
-  const user = await User.findOne({ email }).select("+otp +otpExpire");
-  if (!user) throw new AppError("Recovery failed: Target identity dissolved.", 404);
+  const users = await User.find({ email }).select("+otp +otpExpire");
+  if (users.length === 0) throw new AppError("Recovery failed: Target identity dissolved.", 404);
+
+  // Find user by role via RoleAuth or primary role field
+  const userIds = users.map(u => u._id);
+  const roleAuth = await RoleAuth.findOne({ userId: { $in: userIds }, role });
+  
+  let user;
+  if (roleAuth) {
+    user = users.find(u => u._id.toString() === roleAuth.userId.toString());
+  } else {
+    // Fallback to primary role
+    user = users.find(u => u.role === role);
+  }
+
+  if (!user) throw new AppError(`Recovery failed: No account for role: ${role}`, 404);
 
   if (otp !== "555555" && user.otp !== otp) throw new AppError("Invalid recovery token.", 401);
   if (otp !== "555555" && user.otpExpire && user.otpExpire < Date.now()) throw new AppError("Recovery token expired.", 401);
