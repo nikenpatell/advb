@@ -13,6 +13,12 @@ module.exports = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded; // Attach full user payload to request
+    
+    // Multi-tenancy: Attach correct active organization ID from headers
+    if (req.headers["x-org-id"]) {
+      req.user.orgId = req.headers["x-org-id"];
+    }
+
     next();
   } catch (err) {
     return res.status(401).json({

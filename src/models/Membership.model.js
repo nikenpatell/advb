@@ -24,6 +24,10 @@ const membershipSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Role",
     },
+    clientRoleId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "TypeRegistry",
+    },
     status: {
       type: String,
       enum: ["ACTIVE", "INACTIVE"],

@@ -10,7 +10,7 @@ const typeRegistrySchema = new mongoose.Schema(
     category: {
       type: String,
       required: true,
-      enum: ["CASE_TYPE", "CASE_STAGE", "PAYMENT_MODE", "DOCUMENT_TYPE", "EXPENSE_CATEGORY"],
+      enum: ["CASE_TYPE", "CASE_STAGE", "PAYMENT_MODE", "DOCUMENT_TYPE", "EXPENSE_CATEGORY", "CLIENT_ROLE"],
     },
     organizationId: {
       type: mongoose.Schema.Types.ObjectId,

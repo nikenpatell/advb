@@ -5,7 +5,7 @@ const bcrypt = require("bcryptjs");
 const { generateOTP } = require("../utils/otp");
 
 exports.createMember = async (data, orgId, creatorId) => {
-  const { name, email, password, contactNumber, role, customRoleId } = data;
+  const { name, email, password, contactNumber, role, customRoleId, clientRoleId } = data;
   const targetRole = role || "TEAM_MEMBER";
 
   // 1. Manage Global Identity (Scoped by Role)
@@ -50,14 +50,15 @@ exports.createMember = async (data, orgId, creatorId) => {
       userId: user._id,
       organizationId: orgId,
       role: targetRole,
-      customRoleId: customRoleId || null
+      customRoleId: customRoleId || null,
+      clientRoleId: clientRoleId || null,
     });
   } catch (err) {
     if (err.code !== 11000) throw err;
     // Update existing if needed
     await Membership.findOneAndUpdate(
        { userId: user._id, organizationId: orgId },
-       { role: targetRole, customRoleId: customRoleId || null }
+       { role: targetRole, customRoleId: customRoleId || null, clientRoleId: clientRoleId || null }
     );
   }
 
@@ -66,7 +67,8 @@ exports.createMember = async (data, orgId, creatorId) => {
     name: user.name,
     email: user.email,
     role: targetRole,
-    customRoleId
+    customRoleId,
+    clientRoleId,
   };
 };
 
@@ -77,6 +79,7 @@ exports.getTeamMembers = async (orgId, role) => {
   const memberships = await Membership.find(query)
     .populate("userId", "name email contactNumber isVerified createdAt")
     .populate("customRoleId")
+    .populate("clientRoleId", "title _id")
     .lean();
 
   return memberships.map((m) => ({
@@ -88,13 +91,15 @@ exports.getTeamMembers = async (orgId, role) => {
     role: m.role,
     customRoleId: m.customRoleId?._id,
     customRoleName: m.customRoleId?.name,
+    clientRoleId: m.clientRoleId?._id,
+    clientRole: m.clientRoleId?.title,
     status: m.status,
     joinedAt: m.createdAt,
   }));
 };
 
 exports.updateMember = async (userId, orgId, data) => {
-  const { name, contactNumber, role, status, customRoleId } = data;
+  const { name, contactNumber, role, status, customRoleId, clientRoleId } = data;
   
   const user = await User.findById(userId);
   if (!user) throw new Error("Personnel not found.");
@@ -109,6 +114,7 @@ exports.updateMember = async (userId, orgId, data) => {
   if (role) membership.role = role;
   if (status) membership.status = status;
   if (customRoleId !== undefined) membership.customRoleId = customRoleId || null;
+  if (clientRoleId !== undefined) membership.clientRoleId = clientRoleId || null;
   await membership.save();
 
   return { 
@@ -116,7 +122,8 @@ exports.updateMember = async (userId, orgId, data) => {
      name: user.name, 
      role: membership.role, 
      status: membership.status,
-     customRoleId: membership.customRoleId
+     customRoleId: membership.customRoleId,
+     clientRoleId: membership.clientRoleId,
   };
 };
 
