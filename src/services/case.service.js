@@ -141,10 +141,13 @@ const addHearing = async (caseId, userId, orgId, data) => {
     createdBy: userId
   });
 
-  // Update nextHearingDate if this date is in the future
-  const now = new Date();
-  if (new Date(data.hearingDate) > now) {
-      await Case.findByIdAndUpdate(caseId, { nextHearingDate: data.hearingDate });
+  // Automatically update case details based on this hearing update
+  const caseUpdate = {};
+  if (data.stage) caseUpdate.stage = data.stage;
+  if (data.nextHearingDate) caseUpdate.nextHearingDate = data.nextHearingDate;
+
+  if (Object.keys(caseUpdate).length > 0) {
+    await Case.findByIdAndUpdate(caseId, { $set: caseUpdate });
   }
 
   return hearing;

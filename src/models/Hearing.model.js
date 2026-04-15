@@ -23,6 +23,16 @@ const hearingSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    stage: {
+      type: String, // Case stage at the time of/after this hearing
+    },
+    orders: {
+      type: String, // Details of court orders/proceedings
+      trim: true,
+    },
+    nextHearingDate: {
+      type: Date, // Next scheduled date
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
