@@ -2,6 +2,8 @@ const User = require("../models/User.model");
 const Membership = require("../models/Membership.model");
 const RoleAuth = require("../models/RoleAuth.model");
 const bcrypt = require("bcryptjs");
+const Organization = require("../models/Organization.model");
+const whatsAppService = require("./whatsapp.service");
 const { generateOTP } = require("../utils/otp");
 
 exports.createMember = async (data, orgId, creatorId) => {
@@ -61,6 +63,27 @@ exports.createMember = async (data, orgId, creatorId) => {
        { role: targetRole, customRoleId: customRoleId || null, clientRoleId: clientRoleId || null }
     );
   }
+
+  // 4. Send WhatsApp Notification if a session is connected
+  (async () => {
+    try {
+      if (contactNumber) {
+        const org = await Organization.findById(orgId);
+        const orgName = org ? org.name : "the Organization";
+        
+        let message = "";
+        if (targetRole === "CLIENT") {
+          message = `Welcome to ${orgName} – Your Account Details\n\nHello ${name},\n\nWelcome to ${orgName}! You can now begin your case with us.\n\nHere are your login details:\n\nEmail: ${email}\nPassword: ${password || "Default@123"}\n\nPlease verify your email and log in using the link below:\n🔗 https://advf.vercel.app\n\nImportant:\nFor security reasons, we strongly recommend resetting your password using the "Forgot Password" option after your first login.\n\nIf you need any assistance, feel free to contact us.\n\nBest regards,\n${orgName}`;
+        } else {
+          message = `Welcome to the Team – Your Login Credentials\n\nHello ${name},\n\nWelcome to ${orgName}! We are excited to have you as part of our team.\n\nYour account has been successfully created. Please find your login details below:\n\nEmail: ${email}\nPassword: ${password || "Default@123"}\n\nAccess the system here:\n🔗 https://advf.vercel.app\n\nNext Steps:\n\n1. Verify your email address.\n2. Reset your password using the "Forgot Password" option after logging in.\n3. Complete your profile and begin your assigned tasks.\n\nIf you encounter any issues, please contact the administrator.\n\nBest regards,\n${orgName}\n[HR/Admin Team]`;
+        }
+        
+        await whatsAppService.sendTextMessage(orgId, contactNumber, message);
+      }
+    } catch (err) {
+      console.error("Failed to send WhatsApp notification in team service:", err);
+    }
+  })();
 
   return {
     id: user._id,

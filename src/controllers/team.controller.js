@@ -3,8 +3,8 @@ const asyncHandler = require("../utils/asyncHandler");
 
 exports.createMember = asyncHandler(async (req, res) => {
   const { name, email, password, contactNumber, role } = req.body;
-  if (!name || !email || !password) {
-    throw new Error("Missing required fields for member creation.");
+  if (!name || !email || !password || !contactNumber) {
+    throw new Error("Missing required fields (name, email, password, and mobile number) for identity creation.");
   }
 
   // Ensure current user is an Admin in an active org

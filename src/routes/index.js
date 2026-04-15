@@ -13,6 +13,7 @@ router.use("/roles", require("./role.routes"));
 router.use("/tasks", require("./task.routes"));
 router.use("/calendar", require("./calendar.routes"));
 router.use("/search", require("./search.routes"));
+router.use("/whatsapp", require("./whatsapp.routes"));
 
 // Comprehensive Health Check for industrial monitoring
 router.get("/health", async (req, res) => {

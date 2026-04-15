@@ -1,7 +1,10 @@
 const Case = require("../models/Case.model");
 const Hearing = require("../models/Hearing.model");
 const Membership = require("../models/Membership.model");
+const Organization = require("../models/Organization.model");
+const User = require("../models/User.model");
 const AppError = require("../utils/AppError");
+const whatsAppService = require("./whatsapp.service");
 
 const getCases = async (userId, orgId) => {
   const membership = await Membership.findOne({ userId, organizationId: orgId });
@@ -55,12 +58,45 @@ const getCaseById = async (id, userId, orgId) => {
 };
 
 const createCase = async (userId, orgId, data) => {
-  return await Case.create({
+  const newCase = await Case.create({
     ...data,
     organizationId: orgId,
     createdBy: userId,
     history: [{ action: "REGISTRY_INITIALIZED", performedBy: userId, details: "New litigation record registered in workspace." }]
   });
+
+  // Background WhatsApp Notifications
+  (async () => {
+    try {
+      const populatedCase = await Case.findById(newCase._id)
+        .populate("clientId", "name email contactNumber")
+        .populate("assignedMembers", "name email contactNumber")
+        .populate("organizationId", "name");
+
+      const orgName = populatedCase.organizationId?.name || "the Organization";
+      const loginUrl = "https://advf.vercel.app";
+
+      // 1. Notify Client
+      if (populatedCase.clientId && populatedCase.clientId.contactNumber) {
+        const clientMsg = `Hello *${populatedCase.clientId.name}*,\n\nYour new case has been successfully created in *${orgName}*.\n\n📌 *Case Details:*\n• *Case Number:* ${populatedCase.caseNumber}\n• *Case Title:* ${populatedCase.title}\n• *Case Type:* ${populatedCase.caseType}\n• *Assigned Lawyer:* ${populatedCase.assignedMembers?.map(m => m.name).join(", ") || "Main Council"}\n• *Date Created:* ${new Date().toLocaleDateString()}\n\nTo view and track your case progress, please log in using the link below:\n🔗 ${loginUrl}\n\nIf you have any questions, feel free to contact us.\n\nBest regards,\n*${orgName}*`;
+        await whatsAppService.sendTextMessage(orgId, populatedCase.clientId.contactNumber, clientMsg);
+      }
+
+      // 2. Notify Assigned Team Members
+      if (populatedCase.assignedMembers && populatedCase.assignedMembers.length > 0) {
+        for (const member of populatedCase.assignedMembers) {
+          if (member.contactNumber) {
+            const memberMsg = `Hello *${member.name}*,\n\nYou have been assigned to a new case in *${orgName}*.\n\n📌 *Case Details:*\n• *Case Number:* ${populatedCase.caseNumber}\n• *Client Name:* ${populatedCase.clientId?.name || "Internal"}\n• *Case Title:* ${populatedCase.title}\n• *Case Type:* ${populatedCase.caseType}\n• *Priority:* ${populatedCase.stage || "Standard"}\n• *Date Assigned:* ${new Date().toLocaleDateString()}\n\nPlease log in to review and proceed with the case:\n🔗 ${loginUrl}\n\nThank you for your prompt attention.\n\nBest regards,\n*${orgName}*`;
+            await whatsAppService.sendTextMessage(orgId, member.contactNumber, memberMsg);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[WA]: Failed to deliver case creation notifications:", err.message);
+    }
+  })();
+
+  return newCase;
 };
 
 const updateCase = async (id, userId, orgId, data) => {

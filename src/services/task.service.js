@@ -1,5 +1,8 @@
 const Task = require("../models/Task.model");
+const Organization = require("../models/Organization.model");
+const User = require("../models/User.model");
 const AppError = require("../utils/AppError");
+const whatsAppService = require("./whatsapp.service");
 
 exports.getTasks = async (userId, orgId) => {
   // Access Policy: You see tasks you created OR tasks assigned to you within the workspace.
@@ -37,12 +40,33 @@ exports.getOrgAuditTasks = async (orgId) => {
 };
 
 exports.createTask = async (userId, orgId, data) => {
-  return await Task.create({
+  const newTask = await Task.create({
     ...data,
     createdBy: userId,
     organizationId: orgId,
     history: [{ action: "CREATED", performedBy: userId, details: "Project initiative initialized." }],
   });
+
+  // Background WhatsApp Notifications
+  (async () => {
+    try {
+      const populatedTask = await Task.findById(newTask._id)
+        .populate("assignedTo", "name contactNumber")
+        .populate("createdBy", "name")
+        .populate("organizationId", "name");
+
+      if (populatedTask.assignedTo && populatedTask.assignedTo.contactNumber) {
+        const orgName = populatedTask.organizationId?.name || "the Organization";
+        const message = `Hello *${populatedTask.assignedTo.name}*,\n\nYou have been assigned a new task in *${orgName}*.\n\n📌 *Task Details:*\n• *Task Title:* ${populatedTask.title}\n• *Description:* ${populatedTask.description || "No description provided."}\n• *Due Date:* ${populatedTask.dueDate ? new Date(populatedTask.dueDate).toLocaleDateString() : "Flexible"}\n• *Priority:* ${populatedTask.priority || "MEDIUM"}\n• *Assigned By:* ${populatedTask.createdBy?.name || "Administrator"}\n\nPlease log in to review and complete the task:\n🔗 https://advf.vercel.app\n\nKindly ensure timely completion.\n\nBest regards,\n*${orgName}*`;
+        
+        await whatsAppService.sendTextMessage(orgId, populatedTask.assignedTo.contactNumber, message);
+      }
+    } catch (err) {
+      console.error("[WA]: Failed to deliver task assignment notification:", err.message);
+    }
+  })();
+
+  return newTask;
 };
 
 exports.updateTask = async (taskId, userId, orgId, data) => {
