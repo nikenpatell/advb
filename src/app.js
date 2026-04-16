@@ -36,7 +36,19 @@ app.use(express.urlencoded({ extended: true }));
 /**
  * High-Performance Security & Response Optimization.
  */
-app.use(cors());
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "https://advf-production.up.railway.app",
+  process.env.FRONTEND_URL
+].filter(Boolean);
+
+app.use(
+  cors({
+    origin: allowedOrigins.length ? allowedOrigins : "*",
+    credentials: true,
+  })
+);
 app.use(helmet());
 app.use(compression()); 
 

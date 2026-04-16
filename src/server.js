@@ -7,11 +7,22 @@ require("dotenv").config();
 
 const PORT = process.env.PORT || 5000;
 const server = http.createServer(app);
+
+// Allowed origins for Socket.io
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:3000",
+  process.env.FRONTEND_URL,
+  "https://advf-production.up.railway.app"
+].filter(Boolean);
+
 const io = new Server(server, {
   cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
+    origin: allowedOrigins.length ? allowedOrigins : "*",
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+  transports: ["websocket", "polling"],
 });
 
 // Link IO to services

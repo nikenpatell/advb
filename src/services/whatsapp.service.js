@@ -37,15 +37,27 @@ class WhatsAppService {
 
     console.log(`[WA]: Spawning client for session: ${sessionId}`);
     
+    // Immediately save to database so the user sees it in their list
+    await WhatsAppSession.findOneAndUpdate(
+      { sessionId },
+      { status: 'INITIALIZING', organizationId, name, qrCode: null },
+      { upsert: true }
+    );
+    this.broadcastUpdate(sessionId);
+
+    const isWindows = process.platform === 'win32';
     const client = new Client({
       authStrategy: new LocalAuth({ clientId: sessionId }),
       puppeteer: {
         headless: true,
-        executablePath: fs.existsSync('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe') 
-          ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
-          : fs.existsSync('C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe')
-            ? 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
-            : undefined,
+        // On Railway/Linux, let Puppeteer find the installed Chromium or use env variable
+        executablePath: isWindows 
+          ? (fs.existsSync('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe') 
+              ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+              : fs.existsSync('C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe')
+                ? 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
+                : undefined)
+          : (process.env.PUPPETEER_EXECUTABLE_PATH || undefined),
         args: [
           '--no-sandbox', 
           '--disable-setuid-sandbox',
@@ -54,7 +66,8 @@ class WhatsAppService {
           '--no-first-run',
           '--no-zygote',
           '--disable-gpu',
-          '--disable-software-rasterizer'
+          '--disable-software-rasterizer',
+          '--single-process'
         ]
       }
     });
